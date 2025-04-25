@@ -7,32 +7,39 @@
 
 
 #include <avr/io.h>
-
 #include <avr/interrupt.h>
+
 //Mandar cómo mandar y recibir caracteres
 //Reconoce
+
+volatile char modo = '0';
+uint8_t valor_adc = 0;
 
 int main(void)
 {
 	setup();
-	writeChar('H');
-	/* Replace with your application code */
+	mostarMenu();
+
+
+
 	while (1)
 	{
+		if (modo == '1')
+		{
+			ADCSRA |= (1<<ADSC);
+		}
 	}
 }
 
 void setup(){
 	cli();
-	//Con la calculadora se decide el Baud Rate, ahorita se puede elegir cualquiera, ahorita elegimos 9600 (ver en hoja de datos)
-	//Se asume 9600 por ahora
-	//Modo asíncrono
-	//En Double Speed sale bien, entonces se configura para double speed, esto es con prescaler de 1
-	//Sin prescaler de 1 double speed y el half speed funcionan bien con 9615
-	//Estamos usando prescaler de 1 ahorita
+
 	//UBRR en 103
-	
+	DDRC &= ~(1<<DDC4);
+	DDRC |= (1 << DDC1);
+	DDRC |= (1 << DDC0);
 	initUAT();
+	initADC();
 		DDRB = 0xFF;
 		PORTB = 0x00;
 	
@@ -57,8 +64,7 @@ void initUAT(){
 	
 	//Se configura baud rate
 	UBRR0 = 103; //9615 @ 16MHz
-	
-	
+		
 	
 }
 
@@ -71,13 +77,44 @@ void writeChar(char caracter){
 }
 
 ISR (USART_RX_vect){
-	char codigosalida = UDR0;
+	char dato_recibido = UDR0;
 
-	PORTB = codigosalida;
+	if (modo == '0')
+	{
+		if (dato_recibido == '1')
+		{
+			modo = '1';
+			writeString("Potenciometro Seleccionado \n");
+		}
+		else if (dato_recibido == '2')
+		{
+			modo = '2';
+			writeString("ASCII seleccionado \n");
+		}
+		
+		else { //Programacion defensiva, y reinicio de pregunta despues de mostrar el error
+		writeString("Opcion no valida \n");
+		mostarMenu();
+		}		
+				
+	}
+	
+		else if (modo == '2') //Mostar ASCII y reiniciar pregunta
+		{
+			PORTB = dato_recibido;
+			PORTC = (dato_recibido >> 6);
+			
+			modo = '0';
+			mostarMenu();
+		}
+		
+
+
+	
 	
 }
 
-void writeString(char* texto){
+void writeString(char* texto){ //Funcion de escribir string
 	
 	for (uint8_t i =0; *(texto+i)!='\0'; i++)
 	{
@@ -86,3 +123,44 @@ void writeString(char* texto){
 	
 }
 
+void initADC(){ //Setup de canales adc
+	
+	
+	ADMUX = 0;
+	ADMUX = (1 << REFS0) | (1 << ADLAR) | (1 << MUX2);
+
+	
+	ADCSRA = 0;
+	ADCSRA |= (1 << ADPS1) |(1<<ADPS0) | (1<< ADEN) | (1<<ADIE);
+	
+	
+}
+ISR (ADC_vect){
+	
+	if (modo =='1') //Comparar si se esta en el modo del adc
+	{
+		valor_adc = ADCH;
+		char buffer[10];
+		
+		itoa(valor_adc, buffer, 10);
+		writeString("Valor ADC: ");
+		writeString(buffer);
+		writeString("\n");
+		
+		modo ='0';
+		mostarMenu();
+	}
+	
+	
+}
+
+void mostarMenu(){ //Funcion que permite mostrar el menu al usuario al reninciar la pregunta
+	
+				writeString("Que desea hacer?\n");
+				
+				writeString("Leer Potenciometro: \n");
+				writeString("Enviar ASCII \n");
+				
+	
+	
+}
